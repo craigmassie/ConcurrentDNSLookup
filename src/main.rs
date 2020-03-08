@@ -5,7 +5,6 @@ use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::str;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 
 const BUFFER_SIZE: usize = 10;
 
@@ -80,6 +79,11 @@ fn main() {
     let socket_addresses = host_port.to_socket_addrs().unwrap();
 
     /*
+     * Creating a channel for the main thread that indicates completion.
+     */
+    let (tx, rx) = mpsc::channel();
+
+    /*
      * Creates a single connected client thread
      */
     let (connected_client_tx, connected_client_rx) = mpsc::channel();
@@ -94,6 +98,7 @@ fn main() {
                 Ok(_resp) => {
                     println!("{}", _resp);
                     done = true;
+                    tx.send(true).unwrap();
                 }
                 // On Err, nothing. Waits for next input.
                 Err(_) => (),
@@ -136,5 +141,11 @@ fn main() {
         transmitters[i].send(addr).unwrap();
         i = i + 1;
     }
-    thread::sleep(Duration::from_millis(1000));
+    let mut done: bool = false;
+    while !done {
+        let connected_clinet_exit = rx.recv().unwrap();
+        if connected_clinet_exit {
+            done = true;
+        }
+    }
 }
