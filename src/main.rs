@@ -9,6 +9,9 @@ use std::thread;
 const BUFFER_SIZE: usize = 10;
 
 fn connect_to_address(address: SocketAddr) -> Result<SocketAddr, String> {
+    /*
+     * Attempts to connect to a given SocketAddr, works for both IPv4 and IPv6 addresses.
+     */
     match TcpStream::connect(address) {
         Ok(_) => {
             println! {"Successfully connected to {}", address.ip()};
@@ -21,16 +24,14 @@ fn connect_to_address(address: SocketAddr) -> Result<SocketAddr, String> {
 }
 
 fn send_get_to_address(address: SocketAddr) -> Result<String, String> {
+    /*
+     * Connects to the SocketAddr given as param.
+     */
     let mut stream = match TcpStream::connect(address) {
         Ok(_stream) => _stream,
-        Err(_e) => {
-            return Err(format!(
-                "Unable to send GET request to {}. {}",
-                address.ip(),
-                _e
-            ))
-        }
+        Err(_e) => return Err(format!("Unable to connect to {}. {}", address.ip(), _e)),
     };
+
     let output = format!("Host: {}\r\n", address);
     stream
         .write(b"GET / HTTP/1.1\r\n")
@@ -42,6 +43,10 @@ fn send_get_to_address(address: SocketAddr) -> Result<String, String> {
         .write(b"\r\n")
         .expect("Could not write message in its entirety to the stream.");
 
+    /*
+     * Buffered reading from stream.
+     * Other methods were considered, such as read_to_end - but some responses didn't have EOF char.
+     */
     let mut response = String::new();
     let mut buffer = [0; BUFFER_SIZE];
     let mut done: bool = false;
@@ -79,7 +84,7 @@ fn main() {
     let socket_addresses = host_port.to_socket_addrs().unwrap();
 
     /*
-     * Creating a channel for the main thread that indicates completion.
+     * Creating a channel for the main thread that indicates worker thread completion.
      */
     let (tx, rx) = mpsc::channel();
 
@@ -98,6 +103,7 @@ fn main() {
                 Ok(_resp) => {
                     println!("{}", _resp);
                     done = true;
+                    // Notifies main thread that completion successful.
                     tx.send(true).unwrap();
                 }
                 // On Err, nothing. Waits for next input.
@@ -141,10 +147,14 @@ fn main() {
         transmitters[i].send(addr).unwrap();
         i = i + 1;
     }
+
+    /*
+     * Waits for the connected client to exit.
+     */
     let mut done: bool = false;
     while !done {
-        let connected_clinet_exit = rx.recv().unwrap();
-        if connected_clinet_exit {
+        let connected_client_exit = rx.recv().unwrap();
+        if connected_client_exit {
             done = true;
         }
     }
