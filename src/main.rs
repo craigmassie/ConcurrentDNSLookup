@@ -52,8 +52,8 @@ fn send_get_to_address(address: SocketAddr) -> Result<String, String> {
     let mut done: bool = false;
     while !done {
         match stream.read(&mut buffer) {
-            Ok(n) => {
-                if n < BUFFER_SIZE {
+            Ok(_n) => {
+                if _n < BUFFER_SIZE {
                     done = true;
                 }
                 response.push_str(str::from_utf8(&buffer).unwrap_or(""));
@@ -84,27 +84,21 @@ fn main() {
     let socket_addresses = host_port.to_socket_addrs().unwrap();
 
     /*
-     * Creating a channel for the main thread that indicates worker thread completion.
-     */
-    let (tx, rx) = mpsc::channel();
-
-    /*
-     * Creates a single connected client thread
+     * Creates a single "connected client" thread
      */
     let (connected_client_tx, connected_client_rx) = mpsc::channel();
-    thread::spawn(move || {
+    let connected_client = thread::spawn(move || {
         let mut done: bool = false;
         while !done {
             // Listens on input channel for IP address.
             let address = connected_client_rx.recv().unwrap();
             println!("First address received: {:?}", address);
-            // Attempts to send GET request to channel.
+            // Attempts to send GET request to given address.
             match send_get_to_address(address) {
                 Ok(_resp) => {
                     println!("{}", _resp);
                     done = true;
                     // Notifies main thread that completion successful.
-                    tx.send(true).unwrap();
                 }
                 // On Err, nothing. Waits for next input.
                 Err(_) => (),
@@ -113,7 +107,8 @@ fn main() {
     });
 
     /*
-     * Creates connection attempt thread for each IP address returned by the lookup.
+     * Creates "connection attempt" thread for each IP address returned by the lookup.
+     * Vector of all thread transmitters initialised.
      */
     let mut transmitters = vec![];
     for _ in 0..socket_addresses.len() {
@@ -151,11 +146,5 @@ fn main() {
     /*
      * Waits for the connected client to exit.
      */
-    let mut done: bool = false;
-    while !done {
-        let connected_client_exit = rx.recv().unwrap();
-        if connected_client_exit {
-            done = true;
-        }
-    }
+    connected_client.join().unwrap();
 }
